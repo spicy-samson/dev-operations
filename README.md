@@ -26,7 +26,7 @@ Three stacks that work together. Deploy them in order.
 ```bash
 chmod +x deploy.sh
 
-./deploy.sh myproject ap-southeast-1 my-keypair 203.0.113.5/32 MyDBPassword123!
+./deploy.sh dev-operations ap-southeast-2 my-keypair 203.0.113.5/32 MyDBPassword123!
 #           ^project   ^region        ^keypair   ^your-ip/32    ^db-password
 ```
 
@@ -57,7 +57,7 @@ services:
     image: ghcr.io/yourusername/yourapp:latest
     environment:
       - DATABASE_URL=postgres://appuser:pass@<rds-endpoint>:5432/appdb
-      - AWS_DEFAULT_REGION=ap-southeast-1
+      - AWS_DEFAULT_REGION=ap-southeast-2
 ```
 
 Then restart:
@@ -73,7 +73,7 @@ RDS is in a private subnet — only reachable from within the VPC (i.e. from you
 
 ### 5. Use S3 from your app
 The EC2 IAM role already has read/write access to the S3 bucket.  
-Bucket name format: `myproject-assets-<account-id>`
+Bucket name format: `dev-operations-assets-<account-id>`
 
 In your app, use the AWS SDK — no keys needed, the role handles auth automatically.
 
@@ -83,9 +83,9 @@ In your app, use the AWS SDK — no keys needed, the role handles auth automatic
 
 ```bash
 # Delete in reverse order
-aws cloudformation delete-stack --stack-name myproject-data --region ap-southeast-1
-aws cloudformation delete-stack --stack-name myproject-ec2  --region ap-southeast-1
-aws cloudformation delete-stack --stack-name myproject-vpc  --region ap-southeast-1
+aws cloudformation delete-stack --stack-name dev-operations-data --region ap-southeast-2
+aws cloudformation delete-stack --stack-name dev-operations-ec2  --region ap-southeast-2
+aws cloudformation delete-stack --stack-name dev-operations-vpc  --region ap-southeast-2
 ```
 
 > **Note:** The RDS stack has `DeletionPolicy: Snapshot` — it will take a final snapshot before deleting. You'll be charged a small amount for the snapshot storage until you manually delete it.

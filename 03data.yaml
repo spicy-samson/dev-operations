@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Data Stack — RDS Postgres db.t3.micro (free tier) in private subnet
+  and S3 bucket for static assets / file uploads.
+  Part 3 of 4. Deploy AFTER 01-vpc.yaml.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: dev-operations
+
+  DBName:
+    Type: String
+    Default: appdb
+    Description: Postgres database name.
+
+  DBUsername:
+    Type: String
+    Default: appuser
+    Description: Master username for RDS.
+    NoEcho: false
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: >
+      Master password for RDS (min 8 chars).
+      Store this in AWS Secrets Manager after deployment — never commit it.
+
+  # Second AZ subnet required for the DB subnet group even though we use
+  # single-AZ (free tier). We create it here.
+  PrivateSubnet2Cidr:
+    Type: String
+    Default: 10.0.3.0/24
+
+Resources:
+
+  # ── Extra private subnet for DB subnet group (requires 2 AZs) ────────────
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub ${ProjectName}-VpcId
+      CidrBlock: !Ref PrivateSubnet2Cidr
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-private-subnet-2
+
+  PrivateSubnet2RouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId:
+        Fn::ImportValue: !Sub ${ProjectName}-PrivateRouteTableId
+
+  # ── RDS Subnet Group ──────────────────────────────────────────────────────
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets for RDS
+      SubnetIds:
+        - Fn::ImportValue: !Sub ${ProjectName}-PrivateSubnetId
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-db-subnet-group
+
+  # ── RDS Postgres — free tier ──────────────────────────────────────────────
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot       # Takes a final snapshot before deleting
+    Properties:
+      DBInstanceIdentifier: !Sub ${ProjectName}-db
+      DBInstanceClass: db.t3.micro  # Free tier: 750 hrs/month for 12 months
+      Engine: postgres
+      EngineVersion: '16.13'
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      DBName: !Ref DBName
+      AllocatedStorage: '20'       # Free tier: up to 20 GB
+      StorageType: gp2
+      MultiAZ: false               # Must be false for free tier
+      PubliclyAccessible: false    # Private — accessible only from VPC
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - Fn::ImportValue: !Sub ${ProjectName}-RDSSecurityGroupId
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: 17:00-18:00   # UTC — adjust to your timezone
+      PreferredMaintenanceWindow: Sun:19:00-Sun:20:00
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-rds
+
+  # ── S3 Bucket ─────────────────────────────────────────────────────────────
+  AssetsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${ProjectName}-assets-${AWS::AccountId}
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-assets
+
+Outputs:
+  RDSEndpoint:
+    Description: RDS connection host — use in your app's DATABASE_URL env var
+    Value: !GetAtt RDSInstance.Endpoint.Address
+    Export:
+      Name: !Sub ${ProjectName}-RDSEndpoint
+
+  RDSPort:
+    Value: !GetAtt RDSInstance.Endpoint.Port
+    Export:
+      Name: !Sub ${ProjectName}-RDSPort
+
+  S3BucketName:
+    Value: !Ref AssetsBucket
+    Export:
+      Name: !Sub ${ProjectName}-S3BucketName

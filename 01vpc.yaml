@@ -1,0 +1,314 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  VPC Stack — public + private subnets, IGW, route tables, security groups.
+  Part 1 of 4: networking foundation.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: dev-operations
+    Description: Used as a prefix for all resource names.
+
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+
+  PublicSubnetCidr:
+    Type: String
+    Default: 10.0.1.0/24
+
+  PrivateSubnetCidr:
+    Type: String
+    Default: 10.0.2.0/24
+
+  # Restrict SSH to your IP. Find it at https://checkip.amazonaws.com
+  MyIpCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: >
+      Your IP address in CIDR notation (e.g. 203.0.113.5/32).
+      Default allows all — CHANGE THIS before deploying.
+
+Resources:
+
+  # ── VPC ──────────────────────────────────────────────────────────────────
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-vpc
+
+  # ── Internet Gateway ──────────────────────────────────────────────────────
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-igw
+
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # ── Subnets ───────────────────────────────────────────────────────────────
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnetCidr
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-public-subnet
+
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnetCidr
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-private-subnet
+
+  # ── Route tables ──────────────────────────────────────────────────────────
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-public-rt
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-private-rt
+
+  PrivateSubnetRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ── Security Groups ───────────────────────────────────────────────────────
+  # EC2 security group — allow Cloudflare IPs on 80/443, your IP on 22
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EC2 - HTTP/HTTPS from Cloudflare only, SSH from my IP
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-ec2-sg
+      SecurityGroupIngress:
+        # SSH — restrict to your IP
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref MyIpCidr
+        # ── Cloudflare IPv4 ranges (updated 2024) ──
+        # https://www.cloudflare.com/ips-v4
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 173.245.48.0/20
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 173.245.48.0/20
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 103.21.244.0/22
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 103.21.244.0/22
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 103.22.200.0/22
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 103.22.200.0/22
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 103.31.4.0/22
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 103.31.4.0/22
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 141.101.64.0/18
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 141.101.64.0/18
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 108.162.192.0/18
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 108.162.192.0/18
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 190.93.240.0/20
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 190.93.240.0/20
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 188.114.96.0/20
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 188.114.96.0/20
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 197.234.240.0/22
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 197.234.240.0/22
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 198.41.128.0/17
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 198.41.128.0/17
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 162.158.0.0/15
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 162.158.0.0/15
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 104.16.0.0/13
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 104.16.0.0/13
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 104.24.0.0/14
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 104.24.0.0/14
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 172.64.0.0/13
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 172.64.0.0/13
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 131.0.72.0/22
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 131.0.72.0/22
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  # RDS security group — allow only EC2 SG inbound on 5432 (Postgres)
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS - allow Postgres from EC2 only
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-rds-sg
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+Outputs:
+  VpcId:
+    Value: !Ref VPC
+    Export:
+      Name: !Sub ${ProjectName}-VpcId
+
+  PublicSubnetId:
+    Value: !Ref PublicSubnet
+    Export:
+      Name: !Sub ${ProjectName}-PublicSubnetId
+
+  PrivateSubnetId:
+    Value: !Ref PrivateSubnet
+    Export:
+      Name: !Sub ${ProjectName}-PrivateSubnetId
+
+  EC2SecurityGroupId:
+    Value: !Ref EC2SecurityGroup
+    Export:
+      Name: !Sub ${ProjectName}-EC2SecurityGroupId
+
+  RDSSecurityGroupId:
+    Value: !Ref RDSSecurityGroup
+    Export:
+      Name: !Sub ${ProjectName}-RDSSecurityGroupId
+
+  PrivateRouteTableId:
+    Value: !Ref PrivateRouteTable
+    Export:
+      Name: !Sub ${ProjectName}-PrivateRouteTableId

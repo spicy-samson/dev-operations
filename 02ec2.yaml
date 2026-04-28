@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  EC2 Stack — t2.micro with Docker + Docker Compose installed via UserData,
+  Elastic IP, IAM role for S3 access.
+  Part 2 of 4. Deploy AFTER 01-vpc.yaml.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: dev-operations
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: >
+      Name of an existing EC2 key pair for SSH access.
+      Create one in EC2 → Key Pairs before deploying.
+
+  # Amazon Linux 2023 AMI — ap-southeast-1 (Singapore, closest to PH).
+  # Update this if you deploy to a different region:
+  # https://aws.amazon.com/amazon-linux-2/release-notes/
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Resources:
+
+  # ── IAM Role so EC2 can read/write S3 ────────────────────────────────────
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-ec2-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${ProjectName}-assets-*
+                  - !Sub arn:aws:s3:::${ProjectName}-assets-*/*
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub ${ProjectName}-ec2-profile
+      Roles:
+        - !Ref EC2Role
+
+  # ── EC2 Instance ──────────────────────────────────────────────────────────
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro          # Free tier: 750 hrs/month for 12 months
+      ImageId: !Ref AmiId
+      KeyName: !Ref KeyPairName
+      SubnetId:
+        Fn::ImportValue: !Sub ${ProjectName}-PublicSubnetId
+      SecurityGroupIds:
+        - Fn::ImportValue: !Sub ${ProjectName}-EC2SecurityGroupId
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-ec2
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+
+          # ── System update ──────────────────────────────────────────────
+          dnf update -y
+
+          # ── Docker ────────────────────────────────────────────────────
+          dnf install -y docker
+          systemctl enable --now docker
+          usermod -aG docker ec2-user
+
+          # ── Docker Compose v2 ─────────────────────────────────────────
+          COMPOSE_VERSION="v2.27.1"
+          mkdir -p /usr/local/lib/docker/cli-plugins
+          curl -SL "https://github.com/docker/compose/releases/download/${!COMPOSE_VERSION}/docker-compose-linux-x86_64" \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+          # ── App directory ─────────────────────────────────────────────
+          mkdir -p /app
+          chown ec2-user:ec2-user /app
+
+          # ── Write a starter docker-compose.yml ────────────────────────
+          # Replace the image with your own. The app must listen on port 3000.
+          # Nginx (in the same compose file) reverse-proxies to it on 80.
+          cat > /app/docker-compose.yml << 'EOF'
+          version: "3.9"
+
+          services:
+            app:
+              image: nginx:alpine           # <-- replace with your image
+              restart: unless-stopped
+              environment:
+                - NODE_ENV=production
+                - PORT=3000
+              ports:
+                - "3000:3000"
+
+            nginx:
+              image: nginx:alpine
+              restart: unless-stopped
+              ports:
+                - "80:80"
+                - "443:443"
+              volumes:
+                - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+              depends_on:
+                - app
+          EOF
+
+          # ── Write a starter nginx.conf ────────────────────────────────
+          cat > /app/nginx.conf << 'EOF'
+          server {
+              listen 80;
+              server_name _;
+
+              location / {
+                  proxy_pass         http://app:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header   Upgrade $http_upgrade;
+                  proxy_set_header   Connection keep-alive;
+                  proxy_set_header   Host $host;
+                  proxy_set_header   X-Real-IP $remote_addr;
+                  proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header   X-Forwarded-Proto $scheme;
+                  proxy_cache_bypass $http_upgrade;
+              }
+          }
+          EOF
+
+          # ── Start containers ──────────────────────────────────────────
+          cd /app
+          docker compose up -d
+
+          # ── Signal CloudFormation that setup is done ──────────────────
+          /opt/aws/bin/cfn-signal -e $? \
+            --stack  ${AWS::StackName} \
+            --region ${AWS::Region} \
+            --resource EC2Instance
+
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT10M   # Wait up to 10 min for the UserData signal
+
+  # ── Elastic IP ────────────────────────────────────────────────────────────
+  ElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref EC2Instance
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-eip
+
+Outputs:
+  InstanceId:
+    Value: !Ref EC2Instance
+    Export:
+      Name: !Sub ${ProjectName}-InstanceId
+
+  PublicIp:
+    Description: Elastic IP — point your Cloudflare A record here
+    Value: !Ref ElasticIP
+    Export:
+      Name: !Sub ${ProjectName}-PublicIp

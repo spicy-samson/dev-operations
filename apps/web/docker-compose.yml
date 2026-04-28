@@ -1,0 +1,51 @@
+version: "3.9"
+
+# ── Full stack: Nuxt app + Nginx reverse proxy ────────────────────────────────
+# Drop this file into /app on your EC2 and run: docker compose up -d
+#
+# Env vars are loaded from .env in the same directory.
+# On EC2 the AWS credentials come from the instance role — don't set them here.
+
+services:
+
+  app:
+    image: ${APP_IMAGE:-myapp:latest}   # override with your registry image
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      NITRO_PORT: "3000"
+      NITRO_HOST: "0.0.0.0"
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - internal
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Uncomment after adding TLS certs:
+      # - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge

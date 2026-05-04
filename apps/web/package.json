@@ -25,7 +25,8 @@
     "argon2": "^0.41.1",
     "zod": "^3.23.8",
     "@nuxtjs/tailwindcss": "^6.12.0",
-    "h3": "^1.12.0"
+    "h3": "^1.12.0",
+    "dotenv": "^16.4.0"
   },
   "devDependencies": {
     "drizzle-kit": "^0.24.0",

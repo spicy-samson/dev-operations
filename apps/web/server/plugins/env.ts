@@ -6,7 +6,7 @@
  * instead of crashing on the first real request.
  */
 import { useEnv } from '../utils/env'
-import { defineNitroPlugin } from 'nitropack/plugin'
+import { defineNitroPlugin } from 'nitropack/runtime'
 
 export default defineNitroPlugin(() => {
   try {

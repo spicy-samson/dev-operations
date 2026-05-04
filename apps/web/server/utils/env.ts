@@ -27,7 +27,7 @@ const envSchema = z.object({
   // ── AWS ───────────────────────────────────────────────────────────────────
   AWS_REGION: z
     .string()
-    .default('ap-southeast-1'),
+    .default('ap-southeast-2'),
 
   S3_BUCKET: z
     .string()

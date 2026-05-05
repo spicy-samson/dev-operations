@@ -119,6 +119,23 @@ Resources:
         - Key: Name
           Value: !Sub ${ProjectName}-assets
 
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - PUT
+              - GET
+              - HEAD
+            AllowedOrigins:
+              # Local dev
+              - "http://localhost:3000"
+              # Your production domain — replace with your actual domain
+              - "https://yourdomain.com"
+            ExposedHeaders:
+              - ETag
+            MaxAge: 3000
+            
 Outputs:
   RDSEndpoint:
     Description: RDS connection host — use in your app's DATABASE_URL env var

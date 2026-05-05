@@ -5,7 +5,7 @@
 import { requireAuth }         from '~/server/utils/auth'
 import { useDb }               from '~/server/db/client'
 import { projects, tasks, uploads } from '~/server/db/schema'
-import { eq, count, inArray }  from 'drizzle-orm'
+import { and, eq, count, inArray }  from 'drizzle-orm'
 
 export default defineEventHandler(async (event) => {
   const session = await requireAuth(event)
@@ -29,11 +29,17 @@ export default defineEventHandler(async (event) => {
     ? await db.select({ count: count() }).from(tasks).where(inArray(tasks.projectId, projectIds))
     : [{ count: 0 }]
 
-  // Count uploads by user
+  // Count only successfully uploaded files by user
+  // (exclude pending/failed rows so this matches /uploads list behavior)
   const [uploadRow] = await db
     .select({ count: count() })
     .from(uploads)
-    .where(eq(uploads.userId, session.userId))
+    .where(
+      and(
+        eq(uploads.userId, session.userId),
+        eq(uploads.status, 'uploaded'),
+      ),
+    )
 
   return {
     projects: Number(projectRow?.count ?? 0),

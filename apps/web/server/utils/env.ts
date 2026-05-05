@@ -40,7 +40,7 @@ const envSchema = z.object({
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
 
   // ── App ───────────────────────────────────────────────────────────────────
-  APP_NAME: z.string().default('MyApp'),
+  APP_NAME: z.string().default('OpsHub'),
   APP_URL:  z.string().url().default('http://localhost:3000'),
 
   NODE_ENV: z

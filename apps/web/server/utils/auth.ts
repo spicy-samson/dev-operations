@@ -5,7 +5,7 @@
  * - hashPassword / verifyPassword  → argon2
  * - requireAuth                    → throws 401 if no session
  * - requireAdmin                   → throws 403 if not admin
- * - getUserSession                 → returns typed session or null
+ * - getAppSession                  → typed AppSession from cookie or null
  */
 import argon2 from 'argon2'
 import type { H3Event } from 'h3'
@@ -49,7 +49,7 @@ export interface AppSession {
 // ── requireAuth ───────────────────────────────────────────────────────────
 
 export async function requireAuth(event: H3Event): Promise<AppSession> {
-  const session = await getUserSession(event)
+  const session = await getAppSession(event)
 
   if (!session?.userId) {
     throw createError({ statusCode: 401, message: 'Unauthorized — please log in' })
@@ -70,13 +70,12 @@ export async function requireAdmin(event: H3Event): Promise<AppSession> {
   return session
 }
 
-// ── getUserSession ────────────────────────────────────────────────────────
-// Returns the typed session data from the cookie, or null if not logged in.
+// ── getAppSession ─────────────────────────────────────────────────────────
 
-export async function getUserSession(event: H3Event): Promise<AppSession | null> {
+export async function getAppSession(event: H3Event): Promise<AppSession | null> {
   try {
-    // useUserSession is provided globally by nuxt-auth-utils in Nitro context
-    const { user } = await useUserSession(event)
+    const session = await getUserSession(event)
+    const user    = session.user
     if (!user) return null
     return user as AppSession
   } catch {

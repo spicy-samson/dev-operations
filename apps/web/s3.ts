@@ -13,9 +13,13 @@ export function useS3() {
   if (_s3) return _s3
 
   const config = useRuntimeConfig()
+  const region =
+    typeof config.public.awsRegion === 'string' && config.public.awsRegion
+      ? config.public.awsRegion
+      : 'ap-southeast-2'
 
   _s3 = new S3Client({
-    region: config.awsRegion || 'ap-southeast-1',
+    region,
     // Credentials are auto-detected from the EC2 instance role in production.
     // In local dev, the SDK picks them up from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.
   })

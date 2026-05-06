@@ -24,6 +24,13 @@ const envSchema = z.object({
     .string()
     .min(32, 'NUXT_SESSION_SECRET must be at least 32 characters. Generate one with: openssl rand -base64 32'),
 
+  // Optional bootstrap secret for creating first admin via signup.
+  // Keep unset in normal flow; use only during initial admin setup.
+  ADMIN_SETUP_KEY: z
+    .string()
+    .min(16, 'ADMIN_SETUP_KEY must be at least 16 characters')
+    .optional(),
+
   // ── AWS ───────────────────────────────────────────────────────────────────
   AWS_REGION: z
     .string()

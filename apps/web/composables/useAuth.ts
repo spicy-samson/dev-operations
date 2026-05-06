@@ -19,7 +19,12 @@ export function useAuth() {
   const isAdmin    = computed(() => typedUser.value?.role === 'admin')
 
   // ── signup ────────────────────────────────────────────────────────────────
-  async function signup(payload: { email: string; password: string; name: string }) {
+  async function signup(payload: {
+    email: string
+    password: string
+    name: string
+    adminSetupKey?: string
+  }) {
     const data = await $fetch('/api/auth/signup', {
       method: 'POST',
       body:   payload,

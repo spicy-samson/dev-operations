@@ -63,6 +63,28 @@
           />
         </div>
   
+        <!-- Admin setup key (optional bootstrap) -->
+        <div>
+          <label for="adminSetupKey" class="block text-sm font-medium text-gray-700 mb-1">
+            Admin setup key
+            <span class="text-gray-400 font-normal">(optional)</span>
+          </label>
+          <input
+            id="adminSetupKey"
+            v-model="form.adminSetupKey"
+            type="password"
+            autocomplete="off"
+            placeholder="Only for first admin setup"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
+                   focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent
+                   disabled:opacity-50"
+            :disabled="loading"
+          />
+          <p class="mt-1 text-xs text-gray-400">
+            Leave empty for standard user signup.
+          </p>
+        </div>
+
         <!-- Error -->
         <p v-if="error" class="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
           {{ error }}
@@ -97,7 +119,7 @@
   
   const { signup } = useAuth()
   
-  const form = reactive({ name: '', email: '', password: '' })
+  const form = reactive({ name: '', email: '', password: '', adminSetupKey: '' })
   const loading = ref(false)
   const error   = ref('')
   
@@ -110,6 +132,7 @@
         name:     form.name,
         email:    form.email,
         password: form.password,
+        adminSetupKey: form.adminSetupKey.trim() || undefined,
       })
       await navigateTo('/dashboard')
     } catch (err: any) {

@@ -1,5 +1,3 @@
-version: "3.9"
-
 # ── Full stack: Nuxt app + Nginx reverse proxy ────────────────────────────────
 # Drop this file into /app on your EC2 and run: docker compose up -d
 #
